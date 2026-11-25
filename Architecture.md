@@ -45,7 +45,7 @@ flowchart TB
         M1[("store-policies<br/>קריאה בלבד")]
         M2[("support-notes<br/>קריאה וכתיבה")]
         S["Session<br/>הלולאה רצה כאן"]
-        DEP["Deployment<br/>כל יום 08:00"]
+        DEP["Deployment<br/>א'-ה' 08:00"]
         WH["Webhook<br/>session.status_idled"]
         AG --> S
         ENV --> S
@@ -56,9 +56,12 @@ flowchart TB
         S --> WH
     end
 
-    subgraph SG_MB["Make - תרחיש B: פיזור"]
-        B1["Custom webhook"] --> B2["HTTP: list events<br/>הודעה אחרונה של הסוכן"]
-        B2 --> B3["Parse JSON"]
+    subgraph SG_MB["Make - תרחיש B: פיזור (תכנון, טרם נבדק)"]
+        B1["Custom webhook<br/>אימות חתימה + דילוג על event id שכבר טופל"] --> B2["HTTP: list events"]
+        B2 --> B5{"stop_reason?"}
+        B5 -->|end_turn| B6{"ההודעה הראשונה<br/>מתחילה ב'סבב בוקר'?"}
+        B6 -->|לא| B3["Parse JSON"]
+        B6 -->|כן| BM["סיכום טקסט"]
         B3 --> B4{"status?"}
     end
 
@@ -67,6 +70,8 @@ flowchart TB
         DASH["דשבורד"]
         DR["Gmail<br/>טיוטת תשובה"]
         OWNER["מייל לבעל החנות<br/>צריך החלטה"]
+        SUM["מייל סיכום בוקר"]
+        ERR["מייל לבעל החנות<br/>הריצה לא הסתיימה"]
     end
 
     GM --> A1
@@ -76,6 +81,9 @@ flowchart TB
     B4 -->|ready| DR
     B4 -->|needs_owner| OWNER
     B3 --> LOG
+    B5 -->|budget_reached / retries_exhausted / requires_action| ERR
+    BM --> SUM
+    BM --> LOG
     LOG --> DASH
     OWNER -->|בעל החנות מחליט| REPLY["תשובה ללקוח<br/>רק אחרי אישור של בעל החנות"]
     DR -->|בעל החנות מאשר| REPLY
@@ -99,7 +107,9 @@ flowchart TB
 
 ### טריגר 2 - תזמון: סבב בוקר
 
-**Deployment** ב-Console: כל יום ב-08:00, `Asia/Jerusalem`, ביטוי cron `0 8 * * *`, תקציב 0.30$.
+**Deployment** ב-Console: ראשון עד חמישי ב-08:00, `Asia/Jerusalem`, ביטוי cron `0 8 * * 0-4`, תקציב 0.30$.
+
+מה נבדק ב-Console ב-25.11.2026: ה-Deployment מסומן Paused, ובלשונית Runs מופיעה ריצה אחת בלבד - ידנית (Run now) ב-24.11. ריצה לפי התזמון עוד לא הייתה.
 
 ההודעה הקבועה של הסבב:
 > סבב בוקר. קרא את open-cases.md. רשום אילו פניות פתוחות יותר מ-3 ימים בלי תשובה, ואילו הזמנות עברו 14 ימי עסקים. מחק סגורות מלפני 30 יום. עדכן את last-run.md והחזר סיכום קצר.
@@ -135,7 +145,7 @@ sequenceDiagram
     AG->>AG: bash: חישוב ימי עסקים
     AG->>MEM: כותב שורה ל-open-cases.md
     AG-->>MB: idle → webhook
-    MB->>AG: list events → JSON
+    MB->>AG: list events → stop_reason, ואז JSON
     MB->>SH: שורה ביומן
     alt status = ready
         MB->>G: יצירת טיוטה
@@ -148,6 +158,15 @@ sequenceDiagram
 
 <div dir="rtl">
 
+## תרחיש B - בדיקות לפני שמפזרים (תכנון, טרם נבדק)
+
+התרחישים ב-Make עוד לא בנויים. זה מה שהם צריכים לעשות, לפי התיעוד של Managed Agents:
+
+1. **אימות חתימה.** כל webhook מגיע עם הכותרות `webhook-id`, `webhook-timestamp` ו-`webhook-signature` (HMAC). בקשה שהחתימה שלה לא תקינה נזרקת. עוד לא בדקתי אם Make יודע לאמת HMAC על גוף הבקשה הגולמי. אם לא, החלופה היא שרת קטן שמשתמש ב-`webhooks.unwrap` של ה-SDK ומעביר ל-Make רק בקשות תקינות.
+2. **בלי כפילויות.** אותו אירוע יכול להגיע יותר מפעם אחת, ובכל ניסיון ה-event id זהה. Make שומר כל id בלשונית `Processed` ומדלג על id שכבר קיים.
+3. **למה ה-session עצר.** ה-webhook לא כולל את סיבת העצירה. Make שולף את רשימת האירועים ובודק את ה-`stop_reason` של ה-`session.status_idle` האחרון. רק `end_turn` הוא סיום רגיל. `budget_reached` (נגמר התקציב), `retries_exhausted` (תקלה) או `requires_action` (מחכה לאישור) הולכים אליי כתקלה, ולא כתוצאה.
+4. **שני מסלולים.** אם ההודעה הראשונה ב-session מתחילה ב"סבב בוקר", הפלט הוא טקסט חופשי ולא JSON: הוא נשלח אליי במייל ונרשם כשורה ביומן. כל השאר עובר ל-Parse JSON ולפיזור לפי `status`.
+
 ## מה קורה עם הפלט
 
 | שדה ב-JSON | לאן הולך | למה |
@@ -155,7 +174,7 @@ sequenceDiagram
 | כל השדות | שורה ב-Google Sheets, לשונית `Log` | יומן מלא. ממנו הדשבורד |
 | `draft_reply` כש-`status=ready` | טיוטה ב-Gmail, בשרשור של הלקוח | אני רק קורא ולוחץ שלח |
 | `draft_reply` + `reason` כש-`status=needs_owner` | מייל אליי + לשונית `Needs Owner` | החלטה שלי: זיכוי, פגם, לקוח כועס |
-| סיכום סבב הבוקר | מייל אליי | רשימת מה שנתקע |
+| סיכום סבב הבוקר (טקסט, לא JSON) | מייל אליי + שורה ביומן, במסלול נפרד | רשימת מה שנתקע |
 | עלות ה-session | עמודה ביומן (מתוך `usage` של ה-session) | לדעת כמה עולה פנייה |
 
 ## בסיס הנתונים - יומן הפניות
@@ -200,7 +219,7 @@ Looker Studio מחובר לגיליון. ארבעה מספרים וגרף אחד
 | ערוץ | אצלי | מתי |
 |---|---|---|
 | **Stream** | לא בשימוש | אין מישהו שצופה בזמן אמת |
-| **Webhook** | `session.status_idled` לתרחיש B, `deployment_run.failed` למייל אליי | תמיד |
+| **Webhook** | `session.status_idled` לתרחיש B, `deployment_run.failed` למייל אליי (נשלח רק בריצה מתוזמנת, לא ב-Run now) | תמיד |
 | **Records** | ה-Session viewer ב-Console + עמודת העלות ביומן | כשמשהו נראה מוזר, או בסוף החודש |
 
 ## מה קורה כשמשהו נשבר
@@ -212,6 +231,8 @@ Looker Studio מחובר לגיליון. ארבעה מספרים וגרף אחד
 | Shopify לא מצא הזמנה | Make ממשיך בלי פרטי הזמנה, הסוכן מבקש מהלקוח את המספר | - |
 | ריצת בוקר נכשלה | Deployment run עם שגיאה + webhook | Run now אחרי תיקון |
 | אותו מייל נקלט פעמיים | Make בודק בגיליון אם ה-`messageId` כבר קיים לפני שיוצר session | (הלקח ממטלה 5: מניעת כפילות לפני Claude) |
+| אותו webhook נשלח שוב | ה-event id זהה בכל ניסיון | Make מדלג על id שכבר נמצא בלשונית `Processed` (תכנון, טרם נבדק) |
+| webhook לא נמסר אחרי 3 ניסיונות | האירוע נזרק | סבב הבוקר משווה את ה-sessions של אתמול ליומן ומסמן מה חסר (תכנון, טרם נבדק) |
 
 ## מה נבנה בפועל במטלה (שאלה 5)
 
