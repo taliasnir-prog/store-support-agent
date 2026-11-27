@@ -49,7 +49,7 @@
 
 התוכן ההתחלתי של כל הקבצים בתיקייה [memory/](../memory). התיאורים של ה-stores (שנכנסים ל-system prompt) מופיעים ב-[SPEC.md](../SPEC.md), סעיף 6.
 
-לבדיקות של 25.11 הקמתי עוד שני stores: `test-policies` (`memstore_01QirQNzGciTiW1vHnH2RAqZ`) ו-`test-support-notes` (`memstore_01Mkxn6vT1Tgdh8zYkrk1xm2`). אחר כך הקמתי עוד מחברת דמה נקייה, `test-support-notes-v2` (`memstore_01CsHuGhsycEwQp31E4hSbYn`), לבדיקות עם המדיניות המעודכנת. אלה עותקי דמה, והם לא מחוברים ל-Deployment. פירוט ב-[tests/test-inquiries.md](../tests/test-inquiries.md).
+לבדיקות של 25.11 הקמתי עוד שני stores: `test-policies` (`memstore_01QirQNzGciTiW1vHnH2RAqZ`) ו-`test-support-notes` (`memstore_01Mkxn6vT1Tgdh8zYkrk1xm2`). אחר כך הקמתי עוד מחברת דמה נקייה, `test-support-notes-v2` (`memstore_01CsHuGhsycEwQp31E4hSbYn`), לבדיקות עם המדיניות המעודכנת. לבדיקות N2b ו-N2c הקמתי עוד שתי מחברות דמה, `test-support-notes-v3` (`memstore_01R6LcAhsfUe4yhdfHXEuRGs`, לבדיקת N2b) ו-`test-support-notes-v4` (`memstore_01VAgqoxkWQ58TzeZEbB1k5v`, לבדיקת N2c), עם אותו מצב התחלתי. אלה עותקי דמה, והם לא מחוברים ל-Deployment. פירוט ב-[tests/test-inquiries.md](../tests/test-inquiries.md).
 
 ## 4. Credential vaults
 
